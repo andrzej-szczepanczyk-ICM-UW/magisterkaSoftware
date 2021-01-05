@@ -1,4 +1,4 @@
-#from fenics import *
+# from fenics import *
 from dolfin import *
 import mshr as ms
 import ufl as uf
@@ -13,6 +13,8 @@ import json
 from matplotlib.cm import *
 from matplotlib.colors import *
 from matplotlib import rc
+
+import multiprocessing
 
 
 def saveAsFile(namefile):
@@ -115,6 +117,15 @@ class MeshedGeometry():
         }
 
     @staticmethod
+    def anvilObstackle(length=10, width=12, thickness=0.5, middlePosition=0, frontDistance=2.0):
+        return {
+            "LFCircleMP": Point(frontDistance, middlePosition-width/2.0),
+            "RFCircleMP": Point(frontDistance, middlePosition+width/2.0),
+            "LBCircleMP": Point(frontDistance+length, middlePosition-width/2.0),
+            "RBCircleMP": Point(frontDistance+length, middlePosition+width/2.0)
+        }
+
+    @staticmethod
     def initialRectangle(valueMax):
         return Expression("x[0] > 1.0 && x[0] < 10.0 && x[1] > 2.0 && x[1] < 12.0 ? {} : 0.0".format(valueMax), degree=2)
 
@@ -151,9 +162,10 @@ class MeshedGeometry():
         hasObstackle = False
         if compSettings["obstackleType"] == "rectangleObstackle":
             _obstackleWidth = compSettings["obstackleCalibration"]["width"]
-            _frontDistance = compSettings["obstackleCalibration"]["frontDistance"]
-            _backDistance = compSettings["obstackleCalibration"]["backDistance"]
+            # _frontDistance = compSettings["obstackleCalibration"]["frontDistance"]
+            # _backDistance = compSettings["obstackleCalibration"]["backDistance"]
 
+            # konwersja w ukłądzie współrzędnych dla SAMEJ przeszkody na układ właściwy dla pomieszczenia
             _frontDistance = compSettings["calibration"]["length"] - \
                 _frontDistance
             _backDistance = compSettings["calibration"]["length"] - \
@@ -163,6 +175,38 @@ class MeshedGeometry():
                 width=_obstackleWidth, frontDistance=_frontDistance, backDistance=_backDistance, middlePosition=_middlePosition)
             # TODO generalize this piece of code to set of parts of obstackle
             obstackle = ms.Polygon(obstackle["rect"])
+            hasObstackle = True
+
+        if compSettings["obstackleType"] == "anvilObstackle":
+            length = compSettings["calibration"]["length"]
+            width = compSettings["calibration"]["width"]
+
+            _obstackleWidth = compSettings["obstackleCalibration"]["width"]
+            _obstackleLength = compSettings["obstackleCalibration"]["length"]
+            _frontDistance = compSettings["obstackleCalibration"]["frontDistance"]
+            _thickness = compSettings["obstackleCalibration"]["thickness"]
+            _middlePosition = compSettings["obstackleCalibration"]["middlePosition"]
+            # length=10, width=12, thickness=0.5, middlePosition=0, frontDistance=2.0
+
+            obstackle = MeshedGeometry.anvilObstackle(
+                length=_obstackleLength, width=_obstackleWidth, thickness=_thickness, middlePosition=_middlePosition, frontDistance=_frontDistance)
+            # konwersja w ukłądzie współrzędnych dla SAMEJ przeszkody na układ właściwy dla pomieszczenia
+            cornerFL = ms.Circle(
+                Point(
+                    length - obstackle["LFCircleMP"].x(), width/2.0+obstackle["LFCircleMP"].y()),
+                _thickness/2.0, segments=16)
+            cornerFR = ms.Circle(
+                Point(
+                    length - obstackle["RFCircleMP"].x(), width/2.0+obstackle["RFCircleMP"].y()), _thickness/2.0, segments=16)
+            cornerBL = ms.Circle(
+                Point(
+                    length - obstackle["LBCircleMP"].x(), width/2.0+obstackle["LBCircleMP"].y()), _thickness/2.0, segments=16)
+            cornerBR = ms.Circle(
+                Point(
+                    length - obstackle["RBCircleMP"].x(), width/2.0+obstackle["RBCircleMP"].y()), _thickness/2.0, segments=16)
+
+            obstackle = cornerFL + cornerFR + cornerBL + cornerBR
+
             hasObstackle = True
 
         print("vest length eqals ", _vestibuleLength)
@@ -176,18 +220,18 @@ class MeshedGeometry():
         else:
             self.mesh = ms.generate_mesh(domain-vestibule, denisityMesh)
 
-        if compSettings["initial"] == "rectangleInitial":
+        if compSettings["initialType"] == "rectangleInitial":
             self.initialExpression = MeshedGeometry.initialRectangle(12)
 
-        if compSettings["initial"] == "bellCurveExp":
+        if compSettings["initialType"] == "bellCurveExp":
             px = py = compSettings["calibration"]["width"]/2
             self.initialExpression = MeshedGeometry.initialBellCurveExp(
-                5, middle=(px, py))
+                compSettings["initialParams"]["maxValue"], middle=(px, py))
 
-        if compSettings["initial"] == "bellCurveInvSquare":
+        if compSettings["initialType"] == "bellCurveInvSquare":
             px = py = compSettings["calibration"]["width"]/2
             self.initialExpression = MeshedGeometry.initialBellCurveInvSquare(
-                5, middle=(px, py))
+                compSettings["initialParams"]["maxValue"], middle=(px, py))
 
         compSettings["calibration"]["width"]
 
@@ -422,11 +466,13 @@ class Simulation:
 # https://stackoverflow.com/questions/15861875/custom-background-sections-for-matplotlib-figure
 
     def colorMappedPlot(self, field):
-        M = 0.2
-        b = 200
-        a, c = int(b*M)+2, int(b*M)+2
-        new_min = M/(1+2*M)
-        new_max = (1+M)/(1+2*M)
+        # M = 0.2
+        # b = 200
+        # a, c = int(b*M)+2, int(b*M)+2
+        # new_min = M/(1+2*M)
+        # new_max = (1+M)/(1+2*M)
+
+        a, b, c = 10, 50, 10
 
         rho_max = self.velocityFunction.RHOMAX
 
@@ -446,8 +492,8 @@ class Simulation:
 
         one_level = rho_max/b
 
-        vmin = int(-one_level*a)
-        vmax = int(one_level*c+rho_max)
+        vmin = -one_level*a
+        vmax = one_level*c+rho_max
         newNorm = Normalize(vmin=vmin, vmax=vmax)
         newCMap = mpl.colors.ListedColormap(lmh)
 
@@ -472,6 +518,7 @@ class Simulation:
         plt.show()
 
     def drawSimulationStep(self, numStep):
+        # TODO zmodyfikować nazwę trochę by dorzucić dodatkowy parametr
         @saveAsFile("step{}.jpg".format(numStep))
         def drawStep(self):
             func = NumericalModel.num2fs(self.numericalModel.rhoold,
@@ -492,6 +539,11 @@ class Simulation:
             # plt.legend()
             plt.show()
         drawVStep(self)
+
+    # TODO implement courantNumber - wzór
+    @saveAsFile("courantNumber.png")
+    def drawCourantStability(self):
+        pass
 
     @saveAsFile("velocityFunc.png")
     def visualise(self):
@@ -529,16 +581,17 @@ class Simulation:
     def simulate(self, allSettings):
 
         self.saveSimulationState(allSettings)
-
         if os.path.isdir(Simulation.SIMULATION_FOLDER):
             shutil.rmtree(Simulation.SIMULATION_FOLDER)
-
         os.mkdir(Simulation.SIMULATION_FOLDER)
         os.chdir(Simulation.SIMULATION_FOLDER)
 
-        currentRho = Function(self.V)
+        self.simulateLoop(allSettings)
+        os.chdir("..")
 
+    def simulateLoop(self, concreteSettings):
         F = self.numericalModel.defineEquation()
+        currentRho = Function(self.V)
 
         for i in range(self.maxStep):
 
@@ -552,8 +605,6 @@ class Simulation:
             self.numericalModel.rhoold.assign(currentRho)
             self.numericalModel.V_rhoold = VelocityFunction(
                 self.velocityFuncSettins).Vfield2(self.numericalModel.rhoold)
-
-        os.chdir("..")
 
     def saveSimulationState(self, settings):
         mainCode = open("../main.py", "rt").read()
