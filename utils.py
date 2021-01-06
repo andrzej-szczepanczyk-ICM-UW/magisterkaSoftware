@@ -251,16 +251,6 @@ class MeshedGeometry():
         self.hmax = self.mesh.hmax()
         print("hmin::", self.hmin, "hmaxx::", self.hmax)
 
-    @saveAsFile("DX.jpg")
-    def drawDX(self):
-        plt.title("krok przestrzenny")
-        spatialStep = project(CellDiameter(self.mesh),  self.V)
-        print("!!!!!!!!1", type(spatialStep))
-        p = plot(spatialStep, cmap=mpl.cm.hot)
-        plt.colorbar(p, orientation='horizontal')
-        plt.legend()
-        plt.show()
-
 
 class PhysicalModel(MeshedGeometry):
     def __init__(self, geoSettings, meshDensity):
@@ -559,11 +549,35 @@ class Simulation:
         self.colorMappedPlot(self.numericalModel.V_rhoold)
         plt.legend()
 
-    def __init__(self, numericalModel, velocityFunction, velocityFuncSettins, simName):
-        self.numericalModel = numericalModel
-        self.velocityFunction = velocityFunction
-        self.V = numericalModel.V
-        self.velocityFuncSettins = velocityFuncSettins
+    @saveAsFile("DX.jpg")
+    def drawDX(self):
+        plt.title("krok przestrzenny")
+        spatialStep = project(CellDiameter(self.mesh),  self.V)
+        print("!!!!!!!!1", type(spatialStep))
+        p = plot(spatialStep, cmap=mpl.cm.hot)
+        plt.colorbar(p, orientation='horizontal')
+        plt.legend()
+        plt.show()
+
+    def __init__(self, allSettings):
+        # numericalModel, velocityFunction, velocityFuncSettins, simName
+        vfs = allSettings["velocityFuncSettings"]
+        vf = VelocityFunction(vfs)
+        geoS = allSettings["geoSettings"]
+        nms = allSettings["numModelSetings"]
+
+        pm = PhysicalModel(geoS, geoS["meshDensity"])
+        pm.generateMesh()
+        pm.generateUnitFieldPhi(nms["typeVectorField"])
+        nm = NumericalModel(pm, vfs)
+
+        simName = allSettings["simulationsettings"]["simNameFolder"]
+
+        self.numericalModel = nm
+        self.velocityFuncSettins = vfs
+        self.velocityFunction = vf
+        self.V = nm.V
+        self.mesh = nm.PM.mesh
 
         if os.path.isdir(simName):
             shutil.rmtree(simName)
@@ -571,10 +585,10 @@ class Simulation:
         os.mkdir(simName)
         os.chdir(simName)
 
-    def simulationSettings(self, settings):
-        firstStep = settings["firstStep"]
-        maxStep = settings["maxStep"]
-        frequency = settings["frequency"]
+    def simulationSettings(self, simSettings):
+        firstStep = simSettings["firstStep"]
+        maxStep = simSettings["maxStep"]
+        frequency = simSettings["frequency"]
         self.displayedSteps = range(firstStep, maxStep, frequency)
         self.maxStep = maxStep
 
@@ -589,7 +603,7 @@ class Simulation:
         self.simulateLoop(allSettings)
         os.chdir("..")
 
-    def simulateLoop(self, concreteSettings):
+    def simulateLoop(self, allSettings):
         F = self.numericalModel.defineEquation()
         currentRho = Function(self.V)
 
@@ -612,3 +626,8 @@ class Simulation:
         open("settings.json", "wt").write(json.dumps(settings))
         open("utils.py", "wt").write(mainCode)
         open("main.py", "wt").write(utilsCode)
+
+
+class ManySimulationsManagement:
+    def __init__(self, coreSetting):
+        self.coreSetting = coreSetting
