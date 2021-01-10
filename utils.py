@@ -559,25 +559,28 @@ class Simulation:
         plt.legend()
         plt.show()
 
-    def __init__(self, allSettings):
+    def __init__(self, Settings):
         # numericalModel, velocityFunction, velocityFuncSettins, simName
-        vfs = allSettings["velocityFuncSettings"]
+        vfs = Settings["velocityFuncSettings"]
         vf = VelocityFunction(vfs)
-        geoS = allSettings["geoSettings"]
-        nms = allSettings["numModelSetings"]
+        geoS = Settings["geoSettings"]
+        nms = Settings["numModelSetings"]
 
         pm = PhysicalModel(geoS, geoS["meshDensity"])
         pm.generateMesh()
         pm.generateUnitFieldPhi(nms["typeVectorField"])
         nm = NumericalModel(pm, vfs)
 
-        simName = allSettings["simulationsettings"]["simNameFolder"]
+        simName = Settings["simulationsettings"]["simNameFolder"]
 
+        self.settings = Settings
         self.numericalModel = nm
         self.velocityFuncSettins = vfs
         self.velocityFunction = vf
         self.V = nm.V
         self.mesh = nm.PM.mesh
+
+        self.simulationSettings(Settings)
 
         if os.path.isdir(simName):
             shutil.rmtree(simName)
@@ -586,24 +589,25 @@ class Simulation:
         os.chdir(simName)
 
     def simulationSettings(self, simSettings):
-        firstStep = simSettings["firstStep"]
-        maxStep = simSettings["maxStep"]
-        frequency = simSettings["frequency"]
+        firstStep = simSettings["simulationsettings"]["firstStep"]
+        maxStep = simSettings["simulationsettings"]["maxStep"]
+        frequency = simSettings["simulationsettings"]["frequency"]
         self.displayedSteps = range(firstStep, maxStep, frequency)
         self.maxStep = maxStep
 
-    def simulate(self, allSettings):
+    def simulate(self, makeSimulation=True):
 
-        self.saveSimulationState(allSettings)
+        Settings = self.settings
+        self.saveSimulationState(Settings)
         if os.path.isdir(Simulation.SIMULATION_FOLDER):
             shutil.rmtree(Simulation.SIMULATION_FOLDER)
         os.mkdir(Simulation.SIMULATION_FOLDER)
         os.chdir(Simulation.SIMULATION_FOLDER)
 
-        self.simulateLoop(allSettings)
+        self.simulateLoop(Settings)
         os.chdir("..")
 
-    def simulateLoop(self, allSettings):
+    def simulateLoop(self, Settings):
         F = self.numericalModel.defineEquation()
         currentRho = Function(self.V)
 
@@ -631,3 +635,37 @@ class Simulation:
 class ManySimulationsManagement:
     def __init__(self, coreSetting):
         self.coreSetting = coreSetting
+
+    def paramVariability(self, paramName, paramValues):
+        import copy
+        self.paramName = paramName
+        self.paramValues = paramValues
+        self.numberSettings = len(paramValues)
+        self.manySettings = np.array([])
+        for value in paramValues:
+            setting = copy.deepcopy(self.coreSetting)
+            a = paramName[0]
+            b = paramName[1]
+            setting[a][b] = value
+            setting["simulationsettings"]["simNameFolder"] += "_p{}v{}".format(
+                b, value)
+            self.manySettings = np.append(self.manySettings, setting)
+
+    def setting2file(self):
+        import copy
+        self.groupedSettings = copy.deepcopy(self.coreSetting)
+        a = self.paramName[0]
+        b = self.paramName[1]
+        self.groupedSettings[a][b] = self.paramValues
+
+    def myJob(self, setting):
+        sim = Simulation(setting)
+
+        sim.simulate(makeSimulation=False)
+        print(setting)
+
+    def simulateMany(self):
+        from multiprocessing import Pool
+        if os.path.isdir(self.coreSetting["simulationsettings"]["simNameFolder"])
+        poolWorker = Pool(processes=self.numberSettings)
+        poolWorker.map(self.myJob, self.manySettings)
