@@ -625,8 +625,9 @@ class Simulation:
                 self.velocityFuncSettins).Vfield2(self.numericalModel.rhoold)
 
     def saveSimulationState(self, settings):
-        mainCode = open("../main.py", "rt").read()
-        utilsCode = open("../utils.py", "rt").read()
+        # TODO to miejsce jest trochę niewygodne i mało elastyczne określenie ścieżek
+        mainCode = open("../../main.py", "rt").read()
+        utilsCode = open("../../utils.py", "rt").read()
         open("settings.json", "wt").write(json.dumps(settings))
         open("utils.py", "wt").write(mainCode)
         open("main.py", "wt").write(utilsCode)
@@ -647,7 +648,7 @@ class ManySimulationsManagement:
             a = paramName[0]
             b = paramName[1]
             setting[a][b] = value
-            setting["simulationsettings"]["simNameFolder"] += "_p{}v{}".format(
+            setting["simulationsettings"]["simNameFolder"] += "_p{}_v{}".format(
                 b, value)
             self.manySettings = np.append(self.manySettings, setting)
 
@@ -665,7 +666,12 @@ class ManySimulationsManagement:
         print(setting)
 
     def simulateMany(self):
+        ensSimName = self.coreSetting["simulationsettings"]["simNameFolder"]
         from multiprocessing import Pool
-        if os.path.isdir(self.coreSetting["simulationsettings"]["simNameFolder"])
+        if os.path.isdir(ensSimName):
+            shutil.rmtree(ensSimName)
+        os.mkdir(ensSimName)
+        os.chdir(ensSimName)
         poolWorker = Pool(processes=self.numberSettings)
         poolWorker.map(self.myJob, self.manySettings)
+        os.chdir("..")
