@@ -188,24 +188,104 @@ class MeshedGeometry():
             _middlePosition = compSettings["obstackleCalibration"]["middlePosition"]
             # length=10, width=12, thickness=0.5, middlePosition=0, frontDistance=2.0
 
+            isFrontWall = True
+            isBackWall = False
+            isLeftWall = True
+            isRightWall = True
+
             obstackle = MeshedGeometry.anvilObstackle(
-                length=_obstackleLength, width=_obstackleWidth, thickness=_thickness, middlePosition=_middlePosition, frontDistance=_frontDistance)
+                length=_obstackleLength,
+                width=_obstackleWidth,
+                thickness=_thickness,
+                middlePosition=_middlePosition,
+                frontDistance=_frontDistance)
             # konwersja w ukłądzie współrzędnych dla SAMEJ przeszkody na układ właściwy dla pomieszczenia
             cornerFL = ms.Circle(
                 Point(
-                    length - obstackle["LFCircleMP"].x(), width/2.0+obstackle["LFCircleMP"].y()),
+                    length - obstackle["LFCircleMP"].x(),
+                    width/2.0+obstackle["LFCircleMP"].y()),
                 _thickness/2.0, segments=16)
             cornerFR = ms.Circle(
                 Point(
-                    length - obstackle["RFCircleMP"].x(), width/2.0+obstackle["RFCircleMP"].y()), _thickness/2.0, segments=16)
+                    length - obstackle["RFCircleMP"].x(),
+                    width/2.0+obstackle["RFCircleMP"].y()),
+                _thickness/2.0, segments=16)
             cornerBL = ms.Circle(
                 Point(
-                    length - obstackle["LBCircleMP"].x(), width/2.0+obstackle["LBCircleMP"].y()), _thickness/2.0, segments=16)
+                    length - obstackle["LBCircleMP"].x(),
+                    width/2.0+obstackle["LBCircleMP"].y()),
+                _thickness/2.0, segments=16)
             cornerBR = ms.Circle(
                 Point(
-                    length - obstackle["RBCircleMP"].x(), width/2.0+obstackle["RBCircleMP"].y()), _thickness/2.0, segments=16)
+                    length - obstackle["RBCircleMP"].x(),
+                    width/2.0+obstackle["RBCircleMP"].y()),
+                _thickness/2.0, segments=16)
 
-            obstackle = cornerFL + cornerFR + cornerBL + cornerBR
+            obstackleGeo = cornerFL + cornerFR + cornerBL + cornerBR
+
+            if isFrontWall:
+                FL = Point(
+                    length - obstackle["LFCircleMP"].x()+_thickness/2.0,
+                    width/2.0+obstackle["LFCircleMP"].y())
+                FR = Point(
+                    length - obstackle["RFCircleMP"].x()+_thickness/2.0,
+                    width/2.0+obstackle["RFCircleMP"].y())
+                BL = Point(
+                    length - obstackle["LFCircleMP"].x()-_thickness/2.0,
+                    width/2.0+obstackle["LFCircleMP"].y())
+                BR = Point(
+                    length - obstackle["RFCircleMP"].x()-_thickness/2.0,
+                    width/2.0+obstackle["RFCircleMP"].y())
+                rect = ms.Polygon([FL, FR, BR, BL])
+                obstackleGeo += rect
+
+            if isBackWall:
+                FL = Point(
+                    length - obstackle["LBCircleMP"].x()+_thickness/2.0,
+                    width/2.0+obstackle["LBCircleMP"].y())
+                FR = Point(
+                    length - obstackle["RBCircleMP"].x()+_thickness/2.0,
+                    width/2.0+obstackle["RBCircleMP"].y())
+                BL = Point(
+                    length - obstackle["LBCircleMP"].x()-_thickness/2.0,
+                    width/2.0+obstackle["LBCircleMP"].y())
+                BR = Point(
+                    length - obstackle["RBCircleMP"].x()-_thickness/2.0,
+                    width/2.0+obstackle["RBCircleMP"].y())
+                rect = ms.Polygon([FL, FR, BR, BL])
+                obstackleGeo += rect
+
+            if isLeftWall:
+                FL = Point(
+                    length - obstackle["LFCircleMP"].x(),
+                    width/2.0+obstackle["LFCircleMP"].y()-_thickness/2.0)
+                FR = Point(
+                    length - obstackle["LFCircleMP"].x(),
+                    width/2.0+obstackle["LFCircleMP"].y()+_thickness/2.0)
+                BL = Point(
+                    length - obstackle["LBCircleMP"].x(),
+                    width/2.0+obstackle["LBCircleMP"].y()-_thickness/2.0)
+                BR = Point(
+                    length - obstackle["LBCircleMP"].x(),
+                    width/2.0+obstackle["LBCircleMP"].y()+_thickness/2.0)
+                rect = ms.Polygon([FL, FR, BR, BL])
+                obstackleGeo += rect
+
+            if isRightWall:
+                FL = Point(
+                    length - obstackle["RFCircleMP"].x(),
+                    width/2.0+obstackle["RFCircleMP"].y()-_thickness/2.0)
+                FR = Point(
+                    length - obstackle["RFCircleMP"].x(),
+                    width/2.0+obstackle["RFCircleMP"].y()+_thickness/2.0)
+                BL = Point(
+                    length - obstackle["RBCircleMP"].x(),
+                    width/2.0+obstackle["RBCircleMP"].y()-_thickness/2.0)
+                BR = Point(
+                    length - obstackle["RBCircleMP"].x(),
+                    width/2.0+obstackle["RBCircleMP"].y()+_thickness/2.0)
+                rect = ms.Polygon([FL, FR, BR, BL])
+                obstackleGeo += rect
 
             hasObstackle = True
 
@@ -216,7 +296,7 @@ class MeshedGeometry():
 
         if hasObstackle:
             self.mesh = ms.generate_mesh(
-                domain-vestibule-obstackle, denisityMesh)
+                domain-vestibule-obstackleGeo, denisityMesh)
         else:
             self.mesh = ms.generate_mesh(domain-vestibule, denisityMesh)
 
@@ -625,7 +705,7 @@ class Simulation:
                 self.velocityFuncSettins).Vfield2(self.numericalModel.rhoold)
 
     def saveSimulationState(self, settings):
-        # TODO to miejsce jest trochę niewygodne i mało elastyczne określenie ścieżek
+        # TODO to miejsce jest trochę niewygodne i mało elastyczne określenie ścieże k
         mainCode = open("../../main.py", "rt").read()
         utilsCode = open("../../utils.py", "rt").read()
         open("settings.json", "wt").write(json.dumps(settings))
@@ -648,7 +728,7 @@ class ManySimulationsManagement:
             a = paramName[0]
             b = paramName[1]
             setting[a][b] = value
-            setting["simulationsettings"]["simNameFolder"] += "_p{}_v{}".format(
+            setting["simulationsettings"]["simNameFolder"] = "{}_{}".format(
                 b, value)
             self.manySettings = np.append(self.manySettings, setting)
 
