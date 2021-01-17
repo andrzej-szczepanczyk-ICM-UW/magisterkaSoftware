@@ -40,6 +40,7 @@ class MeshedGeometry():
     ##############################
     @staticmethod
     def simpleSymmetric(length=10, width=12, exitWidth=16, vestibuleLength=0.5):
+        margin = 0.8
         return {
             "geometry": [
 
@@ -49,15 +50,17 @@ class MeshedGeometry():
                 Point(0.0, 0.0)
             ],
             "exit": {
-                "bottom": width/2.0-exitWidth/2.0,
-                "left": length+vestibuleLength-0.02,
-                "right": length+vestibuleLength+0.02,
-                "top": width/2.0+exitWidth/2.0
+                # "bottom": width/2.0-exitWidth/2.0-margin,
+                # "left": length+vestibuleLength-margin,
+                # "right": length+vestibuleLength+margin,
+                # "top": width/2.0+exitWidth/2.0+margin
+                "X": length+vestibuleLength
             }
         }
 
     @staticmethod
     def simpleAsymmetric(length=10, width=12, exitWidth=16, shift=2, vestibuleLength=0.5):
+        margin = 0.8
         return {
             "geometry": [
                 Point(0.0, 0.0),
@@ -66,10 +69,11 @@ class MeshedGeometry():
                 Point(width, 0.0)
             ],
             "exit": {
-                "bottom": width/2.0-exitWidth/2.0+shift,
-                "left": length+vestibuleLength-0.05,
-                "right": length+vestibuleLength+0.05,
-                "top": width/2.0+exitWidth/2.0-shift
+                # "bottom": width/2.0-exitWidth/2.0-margin+shift,
+                # "left": length+vestibuleLength-margin,
+                # "right": length+vestibuleLength+margin,
+                # "top": width/2.0+exitWidth/2.0+margin+shift
+                "X": length+vestibuleLength
             }
         }
 
@@ -316,11 +320,12 @@ class MeshedGeometry():
         compSettings["calibration"]["width"]
 
         def isExitCond(p):
-            xmin = self.geometry["exit"]["left"]
-            xmax = self.geometry["exit"]["right"]
-            ymin = self.geometry["exit"]["bottom"]
-            ymax = self.geometry["exit"]["top"]
-            return xmin < p[0] < xmax and ymin < p[1] < ymax
+            # xmin = self.geometry["exit"]["left"]
+            # xmax = self.geometry["exit"]["right"]
+            # ymin = self.geometry["exit"]["bottom"]
+            # ymax = self.geometry["exit"]["top"]
+            X = self.geometry["exit"]["X"]
+            return near(p[0], X)
 
         self.isExitCond = isExitCond
 
