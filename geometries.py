@@ -46,10 +46,10 @@ class MeshedGeometry():
                 Point(0.0, 0.0)
             ],
             "exit": {
-                # "bottom": width/2.0-exitWidth/2.0-margin,
-                # "left": length+vestibuleLength-margin,
-                # "right": length+vestibuleLength+margin,
-                # "top": width/2.0+exitWidth/2.0+margin
+                "bottom": width/2.0-exitWidth/2.0-margin,
+                "left": length+vestibuleLength-margin,
+                "right": length+vestibuleLength+margin,
+                "top": width/2.0+exitWidth/2.0+margin,
                 "X": length+vestibuleLength
             }
         }
@@ -65,10 +65,10 @@ class MeshedGeometry():
                 Point(width, 0.0)
             ],
             "exit": {
-                # "bottom": width/2.0-exitWidth/2.0-margin+shift,
-                # "left": length+vestibuleLength-margin,
-                # "right": length+vestibuleLength+margin,
-                # "top": width/2.0+exitWidth/2.0+margin+shift
+                "bottom": width/2.0-exitWidth/2.0-margin+shift,
+                "left": length+vestibuleLength-margin,
+                "right": length+vestibuleLength+margin,
+                "top": width/2.0+exitWidth/2.0+margin+shift,
                 "X": length+vestibuleLength
             }
         }
@@ -316,12 +316,13 @@ class MeshedGeometry():
         compSettings["calibration"]["width"]
 
         def isExitCond(p):
-            # xmin = self.geometry["exit"]["left"]
-            # xmax = self.geometry["exit"]["right"]
-            # ymin = self.geometry["exit"]["bottom"]
-            # ymax = self.geometry["exit"]["top"]
+            xmin = self.geometry["exit"]["left"]
+            xmax = self.geometry["exit"]["right"]
+            ymin = self.geometry["exit"]["bottom"]
+            ymax = self.geometry["exit"]["top"]
             X = self.geometry["exit"]["X"]
-            return near(p[0], X)
+            #return near(p[0], X)
+            return xmin <= p[0] <= xmax and ymin <= p[1] <= ymax 
 
         self.isExitCond = isExitCond
 
