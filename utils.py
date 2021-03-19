@@ -16,325 +16,10 @@ from matplotlib import rc
 
 import multiprocessing
 
+from geometries import *
 
-def saveAsFile(namefile):
-    def decorator(func):
-        def draw(self, *args):
-            func(self, *args)
-            plt.savefig(namefile)
-            plt.clf()
-        return draw
-    return decorator
+import numpy as np
 
-
-class Formatter:
-    def __init__(self):
-        self.title = "mesh"
-        self.namefile = "namefile"
-
-
-class MeshedGeometry():
-
-    ##############################
-    # geometry patterns
-    ##############################
-    @staticmethod
-    def simpleSymmetric(length=10, width=12, exitWidth=16, vestibuleLength=0.5):
-        margin = 0.8
-        return {
-            "geometry": [
-
-                Point(length+vestibuleLength, 0.0),
-                Point(length+vestibuleLength, width),
-                Point(0.0, width),
-                Point(0.0, 0.0)
-            ],
-            "exit": {
-                # "bottom": width/2.0-exitWidth/2.0-margin,
-                # "left": length+vestibuleLength-margin,
-                # "right": length+vestibuleLength+margin,
-                # "top": width/2.0+exitWidth/2.0+margin
-                "X": length+vestibuleLength
-            }
-        }
-
-    @staticmethod
-    def simpleAsymmetric(length=10, width=12, exitWidth=16, shift=2, vestibuleLength=0.5):
-        margin = 0.8
-        return {
-            "geometry": [
-                Point(0.0, 0.0),
-                Point(0.0, length+vestibuleLength),
-                Point(width, length+vestibuleLength),
-                Point(width, 0.0)
-            ],
-            "exit": {
-                # "bottom": width/2.0-exitWidth/2.0-margin+shift,
-                # "left": length+vestibuleLength-margin,
-                # "right": length+vestibuleLength+margin,
-                # "top": width/2.0+exitWidth/2.0+margin+shift
-                "X": length+vestibuleLength
-            }
-        }
-
-    ##############################
-    # vestibule patterns
-    ##############################
-    @staticmethod
-    def vestibule(length=10, width=12, exitWidth=16, shift=2, vestibuleLength=0.5):
-        middlePosition = width/2 + shift
-
-        print("vest length in func ", vestibuleLength)
-        FL = Point(length+vestibuleLength, middlePosition-exitWidth/2)
-        FR = Point(length+vestibuleLength, middlePosition+exitWidth/2)
-        BL = Point(length, middlePosition-exitWidth/2)
-        BR = Point(length, middlePosition+exitWidth/2)
-
-        CFL = Point(length+vestibuleLength, 0)
-        CFR = Point(length+vestibuleLength, width)
-        CBL = Point(length, 0)
-        CBR = Point(length, width)
-
-        mainSpaceL = ms.Polygon([FR, CFR, CBR, BR])
-        mainSpaceR = ms.Polygon([CFL, FL, BL, CBL])
-        cornerL = ms.Circle(FL, vestibuleLength, segments=16)
-        cornerR = ms.Circle(FR, vestibuleLength, segments=16)
-        return mainSpaceL + mainSpaceR + cornerL + cornerR
-
-    ##############################
-    # obstackle patterns
-    ##############################
-    @staticmethod
-    def rectangleObstackle(width=0.8, frontDistance=1, backDistance=2, middlePosition=0):
-        return {
-            "rect": [Point(frontDistance, middlePosition-width/2),
-                     Point(frontDistance, middlePosition+width/2),
-                     Point(backDistance, middlePosition+width/2),
-                     Point(backDistance, middlePosition-width/2)],
-            "TESTrect": [
-                Point(3.0, 1.0),
-                Point(3.0, 4.0),
-                Point(1.0, 4.0),
-                Point(1.0, 1.0),
-            ]
-
-        }
-
-    @staticmethod
-    def anvilObstackle(length=10, width=12, thickness=0.5, middlePosition=0, frontDistance=2.0):
-        return {
-            "LFCircleMP": Point(frontDistance, middlePosition-width/2.0),
-            "RFCircleMP": Point(frontDistance, middlePosition+width/2.0),
-            "LBCircleMP": Point(frontDistance+length, middlePosition-width/2.0),
-            "RBCircleMP": Point(frontDistance+length, middlePosition+width/2.0)
-        }
-
-    @staticmethod
-    def initialRectangle(valueMax):
-        return Expression("x[0] > 1.0 && x[0] < 10.0 && x[1] > 2.0 && x[1] < 12.0 ? {} : 0.0".format(valueMax), degree=2)
-
-    @staticmethod
-    def initialBellCurveExp(valueMax, middle=(0, 0)):
-        px = middle[0]
-        py = middle[1]
-        return Expression("{}*exp(-((x[0]-{})*(x[0]-{})+(x[1]-{})*(x[1]-{})))".format(valueMax, px, px, py, py), degree=2)
-
-    @staticmethod
-    def initialBellCurveInvSquare(valueMax, middle=(0, 0)):
-        px = middle[0]
-        py = middle[1]
-        return Expression("{}/((x[0]-{})*(x[0]-{})+(x[1]-{})*(x[1]-{})+2)".format(valueMax, px, px, py, py), degree=2)
-
-    def __init__(self, compSettings, denisityMesh):
-
-        ######################################
-        # TODO program each type of symmetric
-        ######################################
-        if compSettings["geometryType"] == "simpleSymmetric":
-            _length = compSettings["calibration"]["length"]
-            _width = compSettings["calibration"]["width"]
-            _exitWidth = compSettings["calibration"]["exitWidth"]
-            _vestibuleLength = compSettings["calibration"]["vestibuleLength"]
-            geometry = MeshedGeometry.simpleSymmetric(
-                length=_length, width=_width, exitWidth=_exitWidth, vestibuleLength=_vestibuleLength)
-            domain = ms.Polygon(geometry["geometry"])
-            self.geometry = geometry
-
-        ######################################
-        # TODO program each type of obstackle
-        ######################################
-        hasObstackle = False
-        if compSettings["obstackleType"] == "rectangleObstackle":
-            _obstackleWidth = compSettings["obstackleCalibration"]["width"]
-            # _frontDistance = compSettings["obstackleCalibration"]["frontDistance"]
-            # _backDistance = compSettings["obstackleCalibration"]["backDistance"]
-
-            # konwersja w ukłądzie współrzędnych dla SAMEJ przeszkody na układ właściwy dla pomieszczenia
-            _frontDistance = compSettings["calibration"]["length"] - \
-                _frontDistance
-            _backDistance = compSettings["calibration"]["length"] - \
-                _backDistance
-            _middlePosition = compSettings["calibration"]["width"]/2.0
-            obstackle = MeshedGeometry.rectangleObstackle(
-                width=_obstackleWidth, frontDistance=_frontDistance, backDistance=_backDistance, middlePosition=_middlePosition)
-            # TODO generalize this piece of code to set of parts of obstackle
-            obstackle = ms.Polygon(obstackle["rect"])
-            hasObstackle = True
-
-        if compSettings["obstackleType"] == "anvilObstackle":
-            length = compSettings["calibration"]["length"]
-            width = compSettings["calibration"]["width"]
-
-            _obstackleWidth = compSettings["obstackleCalibration"]["width"]
-            _obstackleLength = compSettings["obstackleCalibration"]["length"]
-            _frontDistance = compSettings["obstackleCalibration"]["frontDistance"]
-            _thickness = compSettings["obstackleCalibration"]["thickness"]
-            _middlePosition = compSettings["obstackleCalibration"]["middlePosition"]
-            # length=10, width=12, thickness=0.5, middlePosition=0, frontDistance=2.0
-
-            isFrontWall = True
-            isBackWall = False
-            isLeftWall = True
-            isRightWall = True
-
-            obstackle = MeshedGeometry.anvilObstackle(
-                length=_obstackleLength,
-                width=_obstackleWidth,
-                thickness=_thickness,
-                middlePosition=_middlePosition,
-                frontDistance=_frontDistance)
-            # konwersja w ukłądzie współrzędnych dla SAMEJ przeszkody na układ właściwy dla pomieszczenia
-            cornerFL = ms.Circle(
-                Point(
-                    length - obstackle["LFCircleMP"].x(),
-                    width/2.0+obstackle["LFCircleMP"].y()),
-                _thickness/2.0, segments=16)
-            cornerFR = ms.Circle(
-                Point(
-                    length - obstackle["RFCircleMP"].x(),
-                    width/2.0+obstackle["RFCircleMP"].y()),
-                _thickness/2.0, segments=16)
-            cornerBL = ms.Circle(
-                Point(
-                    length - obstackle["LBCircleMP"].x(),
-                    width/2.0+obstackle["LBCircleMP"].y()),
-                _thickness/2.0, segments=16)
-            cornerBR = ms.Circle(
-                Point(
-                    length - obstackle["RBCircleMP"].x(),
-                    width/2.0+obstackle["RBCircleMP"].y()),
-                _thickness/2.0, segments=16)
-
-            obstackleGeo = cornerFL + cornerFR + cornerBL + cornerBR
-
-            if isFrontWall:
-                FL = Point(
-                    length - obstackle["LFCircleMP"].x()+_thickness/2.0,
-                    width/2.0+obstackle["LFCircleMP"].y())
-                FR = Point(
-                    length - obstackle["RFCircleMP"].x()+_thickness/2.0,
-                    width/2.0+obstackle["RFCircleMP"].y())
-                BL = Point(
-                    length - obstackle["LFCircleMP"].x()-_thickness/2.0,
-                    width/2.0+obstackle["LFCircleMP"].y())
-                BR = Point(
-                    length - obstackle["RFCircleMP"].x()-_thickness/2.0,
-                    width/2.0+obstackle["RFCircleMP"].y())
-                rect = ms.Polygon([FL, FR, BR, BL])
-                obstackleGeo += rect
-
-            if isBackWall:
-                FL = Point(
-                    length - obstackle["LBCircleMP"].x()+_thickness/2.0,
-                    width/2.0+obstackle["LBCircleMP"].y())
-                FR = Point(
-                    length - obstackle["RBCircleMP"].x()+_thickness/2.0,
-                    width/2.0+obstackle["RBCircleMP"].y())
-                BL = Point(
-                    length - obstackle["LBCircleMP"].x()-_thickness/2.0,
-                    width/2.0+obstackle["LBCircleMP"].y())
-                BR = Point(
-                    length - obstackle["RBCircleMP"].x()-_thickness/2.0,
-                    width/2.0+obstackle["RBCircleMP"].y())
-                rect = ms.Polygon([FL, FR, BR, BL])
-                obstackleGeo += rect
-
-            if isLeftWall:
-                FL = Point(
-                    length - obstackle["LFCircleMP"].x(),
-                    width/2.0+obstackle["LFCircleMP"].y()-_thickness/2.0)
-                FR = Point(
-                    length - obstackle["LFCircleMP"].x(),
-                    width/2.0+obstackle["LFCircleMP"].y()+_thickness/2.0)
-                BL = Point(
-                    length - obstackle["LBCircleMP"].x(),
-                    width/2.0+obstackle["LBCircleMP"].y()-_thickness/2.0)
-                BR = Point(
-                    length - obstackle["LBCircleMP"].x(),
-                    width/2.0+obstackle["LBCircleMP"].y()+_thickness/2.0)
-                rect = ms.Polygon([FL, FR, BR, BL])
-                obstackleGeo += rect
-
-            if isRightWall:
-                FL = Point(
-                    length - obstackle["RFCircleMP"].x(),
-                    width/2.0+obstackle["RFCircleMP"].y()-_thickness/2.0)
-                FR = Point(
-                    length - obstackle["RFCircleMP"].x(),
-                    width/2.0+obstackle["RFCircleMP"].y()+_thickness/2.0)
-                BL = Point(
-                    length - obstackle["RBCircleMP"].x(),
-                    width/2.0+obstackle["RBCircleMP"].y()-_thickness/2.0)
-                BR = Point(
-                    length - obstackle["RBCircleMP"].x(),
-                    width/2.0+obstackle["RBCircleMP"].y()+_thickness/2.0)
-                rect = ms.Polygon([FL, FR, BR, BL])
-                obstackleGeo += rect
-
-            hasObstackle = True
-
-        print("vest length eqals ", _vestibuleLength)
-
-        vestibule = MeshedGeometry.vestibule(
-            length=_length, width=_width, exitWidth=_exitWidth, shift=0, vestibuleLength=_vestibuleLength)
-
-        if hasObstackle:
-            self.mesh = ms.generate_mesh(
-                domain-vestibule-obstackleGeo, denisityMesh)
-        else:
-            self.mesh = ms.generate_mesh(domain-vestibule, denisityMesh)
-
-        if compSettings["initialType"] == "rectangleInitial":
-            self.initialExpression = MeshedGeometry.initialRectangle(12)
-
-        if compSettings["initialType"] == "bellCurveExp":
-            px = py = compSettings["calibration"]["width"]/2
-            self.initialExpression = MeshedGeometry.initialBellCurveExp(
-                compSettings["initialParams"]["maxValue"], middle=(px, py))
-
-        if compSettings["initialType"] == "bellCurveInvSquare":
-            px = py = compSettings["calibration"]["width"]/2
-            self.initialExpression = MeshedGeometry.initialBellCurveInvSquare(
-                compSettings["initialParams"]["maxValue"], middle=(px, py))
-
-        compSettings["calibration"]["width"]
-
-        def isExitCond(p):
-            # xmin = self.geometry["exit"]["left"]
-            # xmax = self.geometry["exit"]["right"]
-            # ymin = self.geometry["exit"]["bottom"]
-            # ymax = self.geometry["exit"]["top"]
-            X = self.geometry["exit"]["X"]
-            return near(p[0], X)
-
-        self.isExitCond = isExitCond
-
-    def generateMesh(self):
-        V = FunctionSpace(self.mesh, "P", 2)
-        self.V = V
-        self.hmin = self.mesh.hmin()
-        self.hmax = self.mesh.hmax()
-        print("hmin::", self.hmin, "hmaxx::", self.hmax)
 
 
 class PhysicalModel(MeshedGeometry):
@@ -387,7 +72,7 @@ class PhysicalModel(MeshedGeometry):
 
         u = TestFunction(self.V)
         v = TrialFunction(self.V)
-        sigma = 10
+        sigma = 1
         F = u*v*dx + sigma*sigma*dot(grad(u), grad(v))*dx
         a, L = lhs(F), rhs(F)
 
@@ -409,6 +94,7 @@ class PhysicalModel(MeshedGeometry):
     def plotUnitFieldPhi(self):
         plot(self.unitFieldPhi)
         plot(self.mesh)
+        plt.show()
 
 
 class VelocityFunction:
@@ -417,6 +103,7 @@ class VelocityFunction:
         self.accuracy = settings["TaylorChainAccuracy"]
         self.VMAX = settings["vmax"]
         self.RHOMAX = settings["rhomax"]
+        self.computationVelovityMethod = settings["computationVelovityMethod"]
 
     def taylorRawExp(self, x, zerro, one):
         def pow(x, n, one):
@@ -446,17 +133,43 @@ class VelocityFunction:
             # print("{}\t{}\t{}\t{}".format(i, sign, invS, power))
 
         return result
+    
+    
 
-    def Vfield(self, x, V):
+    def Vfield1(self, x, V):
+          
         def num2fs(x, V):
             return interpolate(Expression(str(x), degree=2), V)
-
+        
         sigma = self.RHOMAX/2.0
         invSigma = num2fs(1.0/sigma, V)
         zerro = num2fs(0.0, V)
         one = num2fs(1.0, V)
-        fx = self.taylorRawExp(x*invSigma, zerro, one)
-        return fx*num2fs(self.VMAX, V)
+
+        def pow(x, n):
+            result = one
+            for i in range(n):
+                result = result*x
+            return result
+
+        def invSilnia(n, one):
+            if n == zerro:
+                return one
+
+            result = one
+            for i in range(1, n+1):
+                # TODO przetestuj
+                result = result*num2fs(i, V)*one
+            return one/result
+
+        result = zerro
+        for i in range(self.accuracy):
+            sign = pow(-one, i)
+            power = pow(x*invSigma, 2*i)
+            invS = invSilnia(i, one)
+            result += sign*invS*power
+
+        return result*num2fs(self.VMAX, V)
 
     def Vfield2(self, xOrigin):
         x = xOrigin.copy(deepcopy=True)
@@ -464,6 +177,12 @@ class VelocityFunction:
         newNodalValues = [self.V(x) for x in nodalValues]
         x.vector().vec().array = newNodalValues
         return x
+    
+    def Vfield(self, f, V):
+        if self.computationVelovityMethod == "vector":
+            return self.Vfield2(f)
+        if self.computationVelovityMethod == "num2fs":
+            return self.Vfield1(f, V)
 
     def V(self, x):
         sigma = self.RHOMAX/2.0
@@ -479,14 +198,14 @@ class NumericalModel:
     def num2fs(expression, V):
         return interpolate(expression, V)
 
-    def __init__(self, PhysicalModel, velocityFuncSettings):
+    def __init__(self, PhysicalModel, velocityFuncSettings, numModelSetings):
         self.PM = PhysicalModel
         self.V = PhysicalModel.V
         self.initialExpression = PhysicalModel.initialExpression
         self.test = TestFunction(PhysicalModel.V)
         self.normal = FacetNormal(PhysicalModel.mesh)
-        self.sigma = 0.0001
-        self.dt = 0.001
+        self.sigma = numModelSetings["sigma"]
+        self.dt = numModelSetings["dt"]
 
         self.rho = TrialFunction(PhysicalModel.V)
         self.rhoold = NumericalModel.num2fs(
@@ -494,11 +213,12 @@ class NumericalModel:
         print("initial definition", type(self.rho))
         # TODO - automatycznie tutaj parametry mają być takie same jak wszędzie !!!!!!!!
         self.V_rhoold = VelocityFunction(
-            velocityFuncSettings).Vfield2(self.rhoold)
+            velocityFuncSettings).Vfield(self.rhoold, self.V)
 
-    def defineEquation(self):
+    def defineEquation(self, exitBCtype):
         sigma = self.sigma
         dt = self.dt
+        dtInv = 1.0/dt
         rho = self.rho
         self.rhoold
         rhoold = self.rhoold
@@ -509,24 +229,41 @@ class NumericalModel:
         EXIT = self.PM.EXIT_CODE
         DS = self.PM.DS
         V_rhoold = self.V_rhoold
-        equation = {}
-        equation["timeDer"] = (rho - rhoold)/dt*test*dx
-        equation["adv"] = -rho*V_rhoold*dot(normed_phi, grad(test))*dx
-        equation["diff"] = 2*sigma * dot(grad(rho), grad(test))*dx
-        equation["diff"] = equation["diff"] + sigma*rho*div(grad(test))*dx
+        
+        setting = "BasicAdvection"
+        if setting == "KAMGAadvectionDiffusion":
+            equation = {}
+            equation["timeDer"] = rho*test*dtInv*dx - rhoold*test*dtInv*dx
+            equation["adv"] = -rho*V_rhoold*dot(normed_phi, grad(test))*dx
+            equation["diff"] = 2*sigma * dot(grad(rho), grad(test))*dx
+            equation["diff"] = equation["diff"] + sigma*rho*div(grad(test))*dx
 
-        equation["boundaryAdv"] = rhoold*test * \
-            V_rhoold*dot(normed_phi, n)*DS(EXIT)
+            equation["boundaryAdv"] = rhoold*test * \
+                V_rhoold*dot(normed_phi, n)*DS(EXIT)
 
-        equation["boundaryDiff"] = - sigma*rhoold * dot(grad(test), n)*DS(EXIT) \
-            - sigma * dot(grad(rhoold), n)*test*DS(WALL)
+            equation["boundaryDiff"] = - sigma*rhoold * dot(grad(test), n)*DS(EXIT) \
+                - sigma * dot(grad(rhoold), n)*test*DS(WALL)
 
-        # TODO napiać to samo w skróconej formie - wykorzystujące właściwości słownika
-        F = equation["timeDer"]
-        F = F + equation["adv"]
-        F = F + equation["diff"]
-        F = F + equation["boundaryDiff"]
-        F = F + equation["boundaryAdv"]
+            # TODO napiać to samo w skróconej formie - wykorzystujące właściwości słownika
+            F = equation["timeDer"]
+            F = F + equation["adv"]
+            F = F + equation["diff"]
+            F = F + equation["boundaryDiff"]
+            F = F + equation["boundaryAdv"]
+            
+        if setting == "BasicAdvection":
+            equation = {}
+            equation["timeDer"] = rho*test*dtInv*dx - rhoold*test*dtInv*dx
+            equation["adv"] = -rho*dot(normed_phi, grad(test))*dx + rhoold*test*dot(normed_phi, n)*DS(WALL)
+            F = equation["timeDer"] + equation["adv"]
+        
+        if setting == "BasicAdvectionDiffusion":
+            equation = {}
+            equation["timeDer"] = rho*test*dtInv*dx - rhoold*test*dtInv*dx
+            equation["adv"] = -rho*dot(normed_phi, grad(test))*dx + rhoold*test*dot(normed_phi, n)*DS(WALL)
+            equation["diff"] = sigma*dot(grad(rho), grad(test))*dx - sigma*rhoold * dot(grad(test), n)*DS(WALL)
+            
+                
 
         print("equation definition", type(rho))
 
@@ -535,9 +272,6 @@ class NumericalModel:
 
 
 class Simulation:
-
-    SIMULATION_FOLDER = "steps"
-
 # https://stackoverflow.com/questions/15861875/custom-background-sections-for-matplotlib-figure
 
     def colorMappedPlot(self, field):
@@ -547,14 +281,14 @@ class Simulation:
         # new_min = M/(1+2*M)
         # new_max = (1+M)/(1+2*M)
 
-        a, b, c = 10, 50, 10
+        a, b, c = 100, 500, 100
 
         rho_max = self.velocityFunction.RHOMAX
 
         low = mpl.colors.LinearSegmentedColormap.from_list(
             "my", ["yellow",  "black"])
         # low = mpl.cm.get_cmap("brg_r")
-        mid = mpl.cm.get_cmap("cubehelix")
+        mid = mpl.cm.get_cmap("nipy_spectral")
         high = mpl.colors.LinearSegmentedColormap.from_list(
             "my", ["white", "red"])
         # high = mpl.cm.get_cmap("ocean")
@@ -572,8 +306,17 @@ class Simulation:
         newNorm = Normalize(vmin=vmin, vmax=vmax)
         newCMap = mpl.colors.ListedColormap(lmh)
 
+        
+        fig, ax = plt.subplots()
+        ax.spines['right'].set_visible(False)
+        ax.spines['top'].set_visible(False)
+        ax.xaxis.set_ticks_position('bottom')
+        ax.yaxis.set_ticks_position('left')
+        
+        
         p = plot(field, levels=np.linspace(vmin, vmax, a+b+c),
                  norm=newNorm, cmap=newCMap, extend="both")
+        
         plt.colorbar(p, cmap=newCMap, fraction=0.07, pad=0.1,
                      shrink=5.0, orientation='horizontal')
 
@@ -598,7 +341,11 @@ class Simulation:
         def drawStep(self):
             func = NumericalModel.num2fs(self.numericalModel.rhoold,
                                          self.numericalModel.V)
-            plt.title("simulation step")
+            
+            f = File("step_paraView{}.pvd".format(numStep))
+            f << func
+            
+            plt.title(r'simulation step')
             self.colorMappedPlot(func)
             # plt.legend()
             plt.show()
@@ -618,7 +365,64 @@ class Simulation:
     # TODO implement courantNumber - wzór
     @saveAsFile("courantNumber.png")
     def drawCourantStability(self):
-        pass
+        def num2fs(x, V):
+            return interpolate(Expression(str(x), degree=2), V)
+
+        V = self.numericalModel.V
+        dxx = project(CellDiameter(self.mesh),  V)
+        v_max = self.velocityFunction.VMAX
+        kappa = self.numericalModel.sigma
+        dt = num2fs(self.numericalModel.dt, V)
+
+        c1 = 1/(4+4*np.sqrt(2))
+        c2 = 1/(12+6*np.sqrt(2))
+        c1 = num2fs(c1, V)
+        c2 = num2fs(c2, V)
+        V15 = num2fs(1.5, V)
+        V2 = num2fs(2.0, V)
+        V4 = num2fs(4.0, V)
+        V05 = num2fs(0.5, V)
+        Vkappa = num2fs(kappa, V)
+        Vvmax = num2fs(v_max, V)
+        
+        alfa_opt = ((Vvmax*Vvmax)/V4 + Vkappa*c1/(c2*dxx*dxx))**V05
+        czlon1 = alfa_opt/(c1)
+        czlon2 = v_max**V2/(V4*alfa_opt*c1)
+        czlon3 = Vkappa/(alfa_opt*c2*dxx*dxx)
+        czlon123 = czlon1+czlon2+czlon3
+
+        condition = V15*(dt/dxx)*(czlon123)
+
+        p = plot(condition, cmap=mpl.cm.hot)
+        plt.colorbar(p, orientation='horizontal')
+        plt.legend()
+        plt.show()
+        return condition
+
+    @saveAsFile("simpleCourantNumber.png")
+    def drawSimpleCourantStability(self):
+        def num2fs(x, V):
+            return interpolate(Expression(str(x), degree=2), V)
+
+        V = self.numericalModel.V
+        spatialStep = project(CellDiameter(self.mesh),  V)
+        dt = num2fs(self.numericalModel.dt, V)
+
+        plt.title(r'$\frac{\Delta{t}}{\Delta{x}}$')
+        p = plot(dt/spatialStep, cmap=mpl.cm.hot)
+        plt.colorbar(p, orientation='horizontal')
+        plt.legend()
+        plt.show()
+        return dt/spatialStep
+    
+    def computeSimpleCourantStability(self):
+        dt = self.numericalModel.dt
+        minSpatialStep = self.mesh.hmin()
+        maxSpatialStep = self.mesh.hmax()
+        minValue = dt/minSpatialStep
+        maxValue = dt/maxSpatialStep
+
+        return {"minValue": minValue, "maxValue": maxValue}
 
     @saveAsFile("velocityFunc.png")
     def visualise(self):
@@ -636,7 +440,7 @@ class Simulation:
 
     @saveAsFile("DX.jpg")
     def drawDX(self):
-        plt.title("krok przestrzenny")
+        plt.title("krok przestrzenny $h = \Delta{x}$")
         spatialStep = project(CellDiameter(self.mesh),  self.V)
         print("!!!!!!!!1", type(spatialStep))
         p = plot(spatialStep, cmap=mpl.cm.hot)
@@ -654,10 +458,12 @@ class Simulation:
         pm = PhysicalModel(geoS, geoS["meshDensity"])
         pm.generateMesh()
         pm.generateUnitFieldPhi(nms["typeVectorField"])
-        nm = NumericalModel(pm, vfs)
+        nm = NumericalModel(pm, vfs, nms)
 
         simName = Settings["simulationsettings"]["simNameFolder"]
 
+        self.nms = nms
+        self.PM = pm
         self.settings = Settings
         self.numericalModel = nm
         self.velocityFuncSettins = vfs
@@ -674,48 +480,87 @@ class Simulation:
         os.chdir(simName)
 
     def simulationSettings(self, simSettings):
-        firstStep = simSettings["simulationsettings"]["firstStep"]
+        minTime = simSettings["simulationsettings"]["minTime"]
+        maxTime = simSettings["simulationsettings"]["maxTime"]
+        minStep = simSettings["simulationsettings"]["minStep"]
         maxStep = simSettings["simulationsettings"]["maxStep"]
         frequency = simSettings["simulationsettings"]["frequency"]
-        self.displayedSteps = range(firstStep, maxStep, frequency)
-        self.maxStep = maxStep
+
+        deltat = self.settings["numModelSetings"]["dt"]
+        
+        if not Simulation.STEPPED:
+            self.minStep = int(minTime/deltat)
+            self.maxStep = int(maxTime/deltat)+1
+            self.frequency = int(frequency/deltat)
+        else:
+            self.minStep = minStep
+            self.maxStep = maxStep  
+            
+        self.displayedSteps = range(self.minStep, self.maxStep, frequency)
+
 
     def simulate(self, makeSimulation=True):
-
         Settings = self.settings
         self.saveSimulationState(Settings)
         if os.path.isdir(Simulation.SIMULATION_FOLDER):
             shutil.rmtree(Simulation.SIMULATION_FOLDER)
         os.mkdir(Simulation.SIMULATION_FOLDER)
         os.chdir(Simulation.SIMULATION_FOLDER)
-
-        self.simulateLoop(Settings)
+        values = self.simulateLoop(Settings, makeSimulation)
         os.chdir("..")
+        return values
+        
+    def removeNegatives(self, func):
+        fvals = func.vector().get_local()     # temporary copy of function value arrays
+        fvals[fvals < 0.0] = 0.0               # numpy syntax for overwriting negative values
+        func.vector().set_local(fvals)
 
-    def simulateLoop(self, Settings):
-        F = self.numericalModel.defineEquation()
+    def simulateLoop(self, Settings, makeSimulation):
+        F = self.numericalModel.defineEquation(self.nms["exitBCtype"])
         currentRho = Function(self.V)
 
+        indexes = []
+        stability = []
+        integral = []
+        
         for i in range(self.maxStep):
 
-            if i in self.displayedSteps:
+            if i in self.displayedSteps and Simulation.VISUALISE_STEPS:
                 print("Solving equation with step {}".format(i))
                 self.drawSimulationStep(i)
                 self.drawSimulationVStep(i)
 
             a, L = lhs(F), rhs(F)
-            solve(a == L, currentRho)
+            if self.nms["usedDirichletBCmethod"]:
+                bc = DirichletBC(self.V, Constant(0.0), self.PM.exit)
+                solve(a == L, currentRho, bc)
+                
+            if not self.nms["usedDirichletBCmethod"]:
+                solve(a == L, currentRho)
+
             self.numericalModel.rhoold.assign(currentRho)
             self.numericalModel.V_rhoold = VelocityFunction(
                 self.velocityFuncSettins).Vfield2(self.numericalModel.rhoold)
+            
+            indexes.append(i*Settings["numModelSetings"]["dt"])
+            stability.append(assemble(project(currentRho*currentRho, self.V)*dx(self.mesh)))
+            integral.append(assemble(project(currentRho, self.V)*dx(self.mesh)))
+        ret = {}
+        ret["indexes"] = indexes
+        ret["stability"] = stability
+        ret["integral"] = integral
+        ret["Courant"] = self.computeSimpleCourantStability()
+        return ret
 
     def saveSimulationState(self, settings):
         # TODO to miejsce jest trochę niewygodne i mało elastyczne określenie ścieże k
         mainCode = open("../../main.py", "rt").read()
         utilsCode = open("../../utils.py", "rt").read()
+        geometries = open("../../geometries.py", "rt").read()
         open("settings.json", "wt").write(json.dumps(settings))
         open("utils.py", "wt").write(mainCode)
         open("main.py", "wt").write(utilsCode)
+        open("geometries.py", "wt").write(geometries)
 
 
 class ManySimulationsManagement:
@@ -724,8 +569,8 @@ class ManySimulationsManagement:
 
     def paramVariability(self, paramName, paramValues):
         import copy
-        self.paramName = paramName
-        self.paramValues = paramValues
+        self.paramName = np.array(paramName)
+        self.paramValues = np.array(paramValues)
         self.numberSettings = len(paramValues)
         self.manySettings = np.array([])
         for value in paramValues:
@@ -746,9 +591,21 @@ class ManySimulationsManagement:
 
     def myJob(self, setting):
         sim = Simulation(setting)
-
-        sim.simulate(makeSimulation=False)
-        print(setting)
+        if Simulation.VISUALISE_STEPS:
+            print("DRAWED 1!!! wih {}".format(setting["numModelSetings"]["dt"]))
+            sim.numericalModel.PM.plotUnitFieldPhi()
+            print("DRAWED 2!!! wih {}".format(setting["numModelSetings"]["dt"]))
+            sim.drawDX()
+            print("DRAWED 3!!! wih {}".format(setting["numModelSetings"]["dt"]))
+            sim.plotMesh()
+            print("DRAWED 4!!! wih {}".format(setting["numModelSetings"]["dt"]))
+            sim.drawCourantStability()
+            print("DRAWED 5!!! wih {}".format(setting["numModelSetings"]["dt"]))
+            sim.drawSimpleCourantStability()
+            print("DRAWED 6!!! wih {}".format(setting["numModelSetings"]["dt"]))
+        value = sim.simulate(makeSimulation=False)
+        print("!! RETURNED VALUE IS", value)
+        return value
 
     def simulateMany(self):
         ensSimName = self.coreSetting["simulationsettings"]["simNameFolder"]
@@ -758,5 +615,82 @@ class ManySimulationsManagement:
         os.mkdir(ensSimName)
         os.chdir(ensSimName)
         poolWorker = Pool(processes=self.numberSettings)
-        poolWorker.map(self.myJob, self.manySettings)
+        self.raw = poolWorker.map(self.myJob, self.manySettings)
+        print("SIM RESULTS ARE", self.raw)
         os.chdir("..")
+        
+
+    def drawSummary(self, typeName='stability'):
+        extractedDatas = {}
+        label = self.paramName[-1]
+        indexes = range(len(self.paramValues))
+        simName = self.coreSetting["simulationsettings"]["simNameFolder"]
+
+        fig, ax = plt.subplots()
+        
+        for i, pv, content in reversed(list(zip(indexes, self.paramValues,  self.raw))):
+            t = content['indexes']
+            extractedDatas = content[typeName]
+            etiquete = label+"="+str(pv)
+            plt.title(typeName)
+            plt.plot(t, extractedDatas, label=etiquete)
+        plt.legend()
+
+        numPeople = self.coreSetting["geoSettings"]["initialParams"]["peopleGroups"]["group1"]["numPeople"]
+        #plt.ylim([-numPeople, 2*numPeople])
+        plt.ylabel(typeName)
+        if Simulation.STEPPED:
+            plt.xlabel("steps of simulation")
+        else:
+            plt.xlabel("time of simulation")             
+                        
+        plt.ylabel("simulation steps")
+        
+        if typeName=='stability':
+            ax.set_yscale('log')   
+        
+        plt.grid(True)
+        plt.savefig(os.path.join(simName, typeName))
+        plt.clf()   
+        
+    def drawSummaryAll(self):  
+        self.drawSummary(typeName='stability')
+        self.drawSummary(typeName='integral')
+        
+    def minmaxCflDraw(self):
+        simName = self.coreSetting["simulationsettings"]["simNameFolder"]
+        
+        labels = self.paramValues
+        width = 0.2
+        
+        indexes = np.arange(len(self.paramValues))
+        minValues = list(range(len(self.paramValues)))
+        maxValues = list(range(len(self.paramValues)))
+        
+        for i, pv, content in reversed(list(zip(indexes, self.paramValues,  self.raw))):
+            minValues[i] = content["Courant"]["minValue"]
+            maxValues[i] = content["Courant"]["maxValue"]
+        
+        plt.ylabel("Courant")                        
+        plt.xlabel("simulation steps")
+        fig, ax = plt.subplots()
+        rects1 = ax.bar(indexes - width/2, minValues, width, label='minCourant')
+        rects2 = ax.bar(indexes + width/2, maxValues, width, label='maxCourant')
+        ax.set_xticklabels(labels)
+        ax.set_xticks(indexes)
+        ax.legend()
+        
+        def autolabel(rects):
+            for rect in rects:
+                height = rect.get_height()
+                ax.annotate('{}'.format(height),
+                            xy=(rect.get_x() + rect.get_width() / 2, height),
+                            xytext=(0, 3),  # 3 points vertical offset
+                            textcoords="offset points",
+                            ha='center', va='bottom')
+        autolabel(rects1)
+        autolabel(rects2)
+        plt.title("")
+        plt.savefig(os.path.join(simName, "courant"))
+        plt.clf()   
+        
